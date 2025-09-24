@@ -105,6 +105,7 @@ INSTALLED_APPS = [
     "django.contrib.staticfiles",
     "django.contrib.humanize",
     "rest_framework",
+    "rest_framework_api_key",
     "rest_framework_datatables",
     "dashboard.apps.DashboardConfig",
     "targetApp.apps.TargetappConfig",
@@ -126,6 +127,7 @@ MIDDLEWARE = [
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
+    "api.middleware.APIKeyAuthenticationMiddleware",
     "login_required.middleware.LoginRequiredMiddleware",
     "dashboard.middleware.SlugMiddleware",
     "dashboard.middleware.ProjectAccessMiddleware",
@@ -152,6 +154,12 @@ TEMPLATES = [
 ]
 ROOT_URLCONF = "reNgine.urls"
 REST_FRAMEWORK = {
+    "DEFAULT_AUTHENTICATION_CLASSES": [
+        "rest_framework.authentication.SessionAuthentication",
+    ],
+    "DEFAULT_PERMISSION_CLASSES": [
+        "api.permissions.HasAPIKeyOrIsAuthenticated",
+    ],
     "DEFAULT_RENDERER_CLASSES": (
         "rest_framework.renderers.JSONRenderer",
         "rest_framework.renderers.BrowsableAPIRenderer",

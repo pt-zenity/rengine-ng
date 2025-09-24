@@ -1,5 +1,6 @@
 from django.contrib.auth.models import User
 from django.db import models
+from rest_framework_api_key.models import AbstractAPIKey
 
 
 class SearchHistory(models.Model):
@@ -51,3 +52,22 @@ class NetlasAPIKey(models.Model):
 
     def __str__(self):
         return self.key
+
+
+class UserAPIKey(AbstractAPIKey):
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="api_keys")
+    name = models.CharField(max_length=100, help_text="Name to identify this API key")
+    created_at = models.DateTimeField(auto_now_add=True)
+    last_used = models.DateTimeField(null=True, blank=True)
+    is_active = models.BooleanField(default=True)
+
+    def get_url_id(self):
+        """Return a URL-safe integer ID for this API key."""
+        return hash(self.id) % 2147483647  # Convert hash to positive 32-bit int
+
+    class Meta:
+        verbose_name = "User API Key"
+        verbose_name_plural = "User API Keys"
+
+    def __str__(self):
+        return f"{self.user.username} - {self.name}"

@@ -350,7 +350,7 @@ class LLMAttackSuggestion(APIView):
             return Response({"status": True, "subdomain_name": subdomain.name, "description": None})
 
         # Generate new analysis
-        ip_addrs = subdomain.ip_addresses.all()
+        ip_addrs = subdomain.ip_addresses.prefetch_related("ports").all()
         open_ports = ", ".join(f"{port.number}/{port.service_name}" for ip in ip_addrs for port in ip.ports.all())
         tech_used = ", ".join(tech.name for tech in subdomain.technologies.all())
 
@@ -938,14 +938,9 @@ class AddTarget(APIView):
 
         # Create org object in DB
         if organization_name:
-            organization_obj = None
-            organization_query = Organization.objects.filter(name=organization_name)
-            if organization_query.exists():
-                organization_obj = organization_query[0]
-            else:
-                organization_obj = Organization.objects.create(
-                    name=organization_name, project=project, insert_date=timezone.now()
-                )
+            organization_obj, created = Organization.objects.get_or_create(
+                name=organization_name, defaults={"project": project, "insert_date": timezone.now()}
+            )
             organization_obj.domains.add(domain)
 
         return Response(
@@ -1680,11 +1675,14 @@ class ListTargetsInOrganization(APIView):
     def get(self, request, format=None):
         req = self.request
         organization_id = safe_int_cast(req.query_params.get("organization_id"))
-        organization = Organization.objects.filter(id=organization_id)
-        targets = Domain.objects.filter(domains__in=organization)
-        organization_serializer = OrganizationSerializer(organization, many=True)
-        targets_serializer = OrganizationTargetsSerializer(targets, many=True)
-        return Response({"organization": organization_serializer.data, "domains": targets_serializer.data})
+        try:
+            organization = Organization.objects.get(id=organization_id)
+            targets = Domain.objects.filter(domains=organization)
+            organization_serializer = OrganizationSerializer(organization)
+            targets_serializer = OrganizationTargetsSerializer(targets, many=True)
+            return Response({"organization": organization_serializer.data, "domains": targets_serializer.data})
+        except Organization.DoesNotExist:
+            return Response({"error": "Organization not found"}, status=404)
 
 
 class ListTargetsWithoutOrganization(APIView):
@@ -2984,7 +2982,7 @@ class VulnerabilityViewSet(viewsets.ModelViewSet):
             lookup_title = search_param[0].lower().strip()
             lookup_content = search_param[1].lower().strip()
             if "severity" in lookup_title:
-                severity_value = NUCLEI_SEVERITY_MAP.get(lookup_title, -1)
+                severity_value = NUCLEI_SEVERITY_MAP.get(lookup_content, -1)
                 qs = self.queryset.exclude(severity=severity_value)
             elif "name" in lookup_title:
                 qs = self.queryset.exclude(name__icontains=lookup_content)

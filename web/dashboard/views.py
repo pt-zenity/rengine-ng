@@ -30,7 +30,7 @@ from startScan.models import (
 from targetApp.models import Domain
 
 from dashboard.forms import ProjectForm
-from dashboard.models import NetlasAPIKey, OpenAiAPIKey, Project
+from dashboard.models import NetlasAPIKey, OpenAiAPIKey, Project, UserAPIKey
 from dashboard.utils import get_user_groups, get_user_projects
 
 logger = logging.getLogger(__name__)
@@ -341,7 +341,7 @@ def onboarding(request):
 
         try:
             if create_username and create_password and create_user_role:
-                User = get_user_model() # noqa: N806
+                User = get_user_model()  # noqa: N806
                 user = User.objects.create_user(username=create_username, password=create_password)
                 assign_role(user, create_user_role)
         except Exception as e:
@@ -394,7 +394,7 @@ def edit_project(request, slug):
         messages.error(request, "You don't have permission to edit this project.")
         return redirect("list_projects")
 
-    User = get_user_model() # noqa: N806
+    User = get_user_model()  # noqa: N806
     all_users = User.objects.all()
 
     if request.method == "POST":
@@ -434,3 +434,85 @@ def set_current_project(request, slug):
         messages.success(request, f"Project {project.name} set as current project.")
         return response
     return HttpResponseBadRequest("Invalid request method. Only GET is allowed.", status=400)
+
+
+def api_key_management(request):
+    """
+    Display user's API keys management page.
+
+    Shows list of user's API keys with creation date, last used, and status.
+    Allows creation, activation/deactivation, and deletion of API keys.
+    """
+    user_api_keys = UserAPIKey.objects.filter(user=request.user).order_by("-created_at")
+    context = {"api_keys": user_api_keys, "page_title": "API Keys Management"}
+
+    # Check if there's a newly created API key to show
+    new_api_key = request.session.pop("new_api_key", None)
+    if new_api_key:
+        context["new_api_key"] = new_api_key
+
+    return render(request, "dashboard/api_keys.html", context)
+
+
+def create_api_key(request):
+    """
+    Create a new API key for the current user.
+
+    Validates the API key name and creates a new UserAPIKey instance.
+    Returns the generated key only once for security.
+    """
+    if request.method == "POST":
+        name = request.POST.get("name", "").strip()
+        if name:
+            # Check if user already has an API key with this name
+            if UserAPIKey.objects.filter(user=request.user, name=name).exists():
+                messages.error(request, f'API Key with name "{name}" already exists. Please choose a different name.')
+            else:
+                api_key, key = UserAPIKey.objects.create_key(name=name, user=request.user)
+                # Store the new key info in session to display in modal
+                request.session["new_api_key"] = {"name": name, "key": key}
+                messages.success(request, f'API Key "{name}" created successfully!')
+        else:
+            messages.error(request, "API Key name is required.")
+
+    return redirect("api_keys")
+
+
+def delete_api_key(request, key_id):
+    """
+    Delete an API key belonging to the current user.
+
+    Args:
+        key_id (str): Primary key of the API key to delete
+    """
+    if request.method == "POST":
+        try:
+            api_key = get_object_or_404(UserAPIKey, pk=key_id, user=request.user)
+            key_name = api_key.name
+            api_key.delete()
+            messages.success(request, f'API Key "{key_name}" deleted successfully.')
+        except Exception:
+            messages.error(request, "API Key not found or you do not have permission to delete it.")
+
+    return redirect("api_keys")
+
+
+def toggle_api_key(request, key_id):
+    """
+    Toggle the active status of an API key.
+
+    Args:
+        key_id (str): Primary key of the API key to toggle
+    """
+    if request.method == "POST":
+        try:
+            api_key = get_object_or_404(UserAPIKey, pk=key_id, user=request.user)
+            api_key.is_active = not api_key.is_active
+            api_key.save(update_fields=["is_active"])
+
+            status_text = "activated" if api_key.is_active else "deactivated"
+            messages.success(request, f'API Key "{api_key.name}" {status_text} successfully.')
+        except Exception:
+            messages.error(request, "API Key not found or you do not have permission to modify it.")
+
+    return redirect("api_keys")

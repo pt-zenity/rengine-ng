@@ -58,7 +58,23 @@ class DomainSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Domain
-        fields = "__all__"
+        fields = [
+            "id",
+            "name",
+            "h1_team_handle",
+            "ip_address_cidr",
+            "description",
+            "insert_date",
+            "start_scan_date",
+            "request_headers",
+            "domain_info",
+            "project",
+            "vuln_count",
+            "organization",
+            "most_recent_scan",
+            "insert_date_humanized",
+            "start_scan_date_humanized",
+        ]
         depth = 2
 
     def get_vuln_count(self, obj):
@@ -128,7 +144,19 @@ class ReconNoteSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = TodoNote
-        fields = "__all__"
+        fields = [
+            "id",
+            "title",
+            "description",
+            "scan_history",
+            "subdomain",
+            "is_done",
+            "is_important",
+            "project",
+            "domain_name",
+            "subdomain_name",
+            "scan_started_time",
+        ]
 
     def get_domain_name(self, note):
         if note.scan_history:
@@ -158,7 +186,23 @@ class SubScanSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = SubScan
-        fields = "__all__"
+        fields = [
+            "id",
+            "type",
+            "start_scan_date",
+            "status",
+            "celery_ids",
+            "scan_history",
+            "subdomain",
+            "stop_scan_date",
+            "error_message",
+            "engine",
+            "subdomain_subscan_ids",
+            "subdomain_name",
+            "time_taken",
+            "elapsed_time",
+            "completed_ago",
+        ]
 
     def get_subdomain_name(self, subscan):
         return subscan.subdomain.name
@@ -179,7 +223,7 @@ class SubScanSerializer(serializers.ModelSerializer):
 class CommandSerializer(serializers.ModelSerializer):
     class Meta:
         model = Command
-        fields = "__all__"
+        fields = ["id", "scan_history", "activity", "command", "return_code", "output", "time"]
         depth = 1
 
 
@@ -328,7 +372,7 @@ class ScanActivitySerializer(serializers.ModelSerializer):
 class OrganizationSerializer(serializers.ModelSerializer):
     class Meta:
         model = Organization
-        fields = "__all__"
+        fields = ["id", "name", "description", "insert_date", "domains", "project"]
 
 
 class EngineSerializer(serializers.ModelSerializer):
@@ -430,12 +474,7 @@ class VisualiseSubdomainSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Subdomain
-        fields = [
-            "description",
-            "children",
-            "http_status",
-            "title",
-        ]
+        fields = ["description", "children", "http_status", "title"]
 
     def get_description(self, subdomain):
         return subdomain.name
@@ -569,11 +608,7 @@ class VisualiseDataSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = ScanHistory
-        fields = [
-            "description",
-            "title",
-            "children",
-        ]
+        fields = ["description", "title", "children"]
 
     def get_description(self, scan_history):
         return scan_history.domain.name
@@ -698,7 +733,33 @@ class SubdomainChangesSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Subdomain
-        fields = "__all__"
+        fields = [
+            "id",
+            "scan_history",
+            "target_domain",
+            "name",
+            "is_imported_subdomain",
+            "is_important",
+            "http_url",
+            "http_header_path",
+            "discovered_date",
+            "cname",
+            "is_cdn",
+            "cdn_name",
+            "http_status",
+            "content_type",
+            "response_time",
+            "webserver",
+            "content_length",
+            "page_title",
+            "technologies",
+            "ip_addresses",
+            "directories",
+            "waf",
+            "attack_surface",
+            "change",
+            "is_interesting",
+        ]
 
     def get_change(self, Subdomain):
         return Subdomain.change
@@ -712,7 +773,23 @@ class EndPointChangesSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = EndPoint
-        fields = "__all__"
+        fields = [
+            "id",
+            "scan_history",
+            "target_domain",
+            "subdomain",
+            "http_url",
+            "page_title",
+            "content_type",
+            "webserver",
+            "response_time",
+            "http_status",
+            "content_length",
+            "techs",
+            "screenshot_path",
+            "matched_gf_patterns",
+            "change",
+        ]
 
     def get_change(self, EndPoint):
         return EndPoint.change
@@ -727,25 +804,40 @@ class InterestingSubdomainSerializer(serializers.ModelSerializer):
 class EmailSerializer(serializers.ModelSerializer):
     class Meta:
         model = Email
-        fields = "__all__"
+        fields = ["id", "address", "password"]
 
 
 class DorkSerializer(serializers.ModelSerializer):
     class Meta:
         model = Dork
-        fields = "__all__"
+        fields = ["id", "type", "url"]
 
 
 class EmployeeSerializer(serializers.ModelSerializer):
     class Meta:
         model = Employee
-        fields = "__all__"
+        fields = ["id", "name", "designation"]
 
 
 class MetafinderDocumentSerializer(serializers.ModelSerializer):
     class Meta:
         model = MetaFinderDocument
-        fields = "__all__"
+        fields = [
+            "id",
+            "target_domain",
+            "scan_history",
+            "subdomain",
+            "url",
+            "doc_name",
+            "title",
+            "http_status",
+            "producer",
+            "creator",
+            "creation_date",
+            "modified_date",
+            "author",
+            "os",
+        ]
         depth = 1
 
 
@@ -774,13 +866,13 @@ class DorkCountSerializer(serializers.Serializer):
 class TechnologySerializer(serializers.ModelSerializer):
     class Meta:
         model = Technology
-        fields = "__all__"
+        fields = ["id", "name"]
 
 
 class PortSerializer(serializers.ModelSerializer):
     class Meta:
         model = Port
-        fields = "__all__"
+        fields = ["id", "number", "service_name", "description", "is_uncommon", "ip_address"]
 
 
 class IpSerializer(serializers.ModelSerializer):
@@ -790,7 +882,19 @@ class IpSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = IpAddress
-        fields = "__all__"
+        fields = [
+            "id",
+            "address",
+            "ports",
+            "reverse_pointer",
+            "is_cdn",
+            "geo_iso",
+            "version",
+            "is_private",
+            "ip_subscan_ids",
+            "subdomain_count",
+            "subdomain_names",
+        ]
 
     def get_base_subdomain_query(self, obj):
         query = Subdomain.objects.filter(ip_addresses=obj)
@@ -814,7 +918,7 @@ class IpSerializer(serializers.ModelSerializer):
 class DirectoryFileSerializer(serializers.ModelSerializer):
     class Meta:
         model = DirectoryFile
-        fields = "__all__"
+        fields = ["id", "name", "url", "length", "lines", "http_status", "words", "content_type"]
 
 
 class DirectoryScanSerializer(serializers.ModelSerializer):
@@ -824,7 +928,7 @@ class DirectoryScanSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = DirectoryScan
-        fields = "__all__"
+        fields = ["id", "scanned_date", "command_line", "directory_files", "dir_subscan_ids", "formatted_date_for_id"]
 
     def get_scanned_date(self, DirectoryScan):
         return DirectoryScan.scanned_date.strftime("%b %d, %Y %H:%M")
@@ -843,7 +947,7 @@ class IpSubdomainSerializer(serializers.ModelSerializer):
 class WafSerializer(serializers.ModelSerializer):
     class Meta:
         model = Waf
-        fields = "__all__"
+        fields = ["id", "name", "manufacturer"]
 
 
 class SubdomainSerializer(serializers.ModelSerializer):
@@ -867,7 +971,42 @@ class SubdomainSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Subdomain
-        fields = "__all__"
+        fields = [
+            "id",
+            "scan_history",
+            "target_domain",
+            "name",
+            "is_imported_subdomain",
+            "is_important",
+            "http_url",
+            "http_header_path",
+            "discovered_date",
+            "cname",
+            "is_cdn",
+            "cdn_name",
+            "http_status",
+            "content_type",
+            "response_time",
+            "webserver",
+            "content_length",
+            "page_title",
+            "technologies",
+            "ip_addresses",
+            "directories",
+            "waf",
+            "attack_surface",
+            "vuln_count",
+            "is_interesting",
+            "endpoint_count",
+            "info_count",
+            "low_count",
+            "medium_count",
+            "high_count",
+            "critical_count",
+            "todos_count",
+            "directories_count",
+            "subscan_count",
+        ]
 
     def get_is_interesting(self, subdomain):
         scan_id = subdomain.scan_history.id if subdomain.scan_history else None
@@ -916,7 +1055,30 @@ class EndpointSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = EndPoint
-        fields = "__all__"
+        fields = [
+            "id",
+            "scan_history",
+            "target_domain",
+            "subdomain",
+            "source",
+            "http_url",
+            "content_length",
+            "page_title",
+            "http_status",
+            "content_type",
+            "discovered_date",
+            "response_time",
+            "webserver",
+            "is_default",
+            "matched_gf_patterns",
+            "screenshot_path",
+            "techs",
+            "endpoint_subscan_ids",
+            "subdomain_id",
+            "scan_history_id",
+            "target_domain_id",
+            "subdomain_name",
+        ]
 
     def get_subdomain_id(self, obj):
         return obj.subdomain.id if obj.subdomain else None
@@ -975,7 +1137,40 @@ class VulnerabilitySerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Vulnerability
-        fields = "__all__"
+        fields = [
+            "id",
+            "scan_history",
+            "source",
+            "subdomain",
+            "endpoint",
+            "target_domain",
+            "template",
+            "template_url",
+            "template_id",
+            "matcher_name",
+            "name",
+            "severity",
+            "description",
+            "impact",
+            "remediation",
+            "extracted_results",
+            "tags",
+            "references",
+            "cve_ids",
+            "cwe_ids",
+            "cvss_metrics",
+            "cvss_score",
+            "curl_command",
+            "type",
+            "http_url",
+            "discovered_date",
+            "open_status",
+            "hackerone_report_id",
+            "request",
+            "response",
+            "is_llm_used",
+            "vuln_subscan_ids",
+        ]
         depth = 1
 
 
