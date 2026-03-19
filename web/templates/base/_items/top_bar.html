@@ -19,7 +19,7 @@
       
       <!-- Logo -->
       <div class="col-auto d-none d-sm-block">
-        <a href="{% url 'dashboardIndex' current_project.slug %}" class="logo logo-dark">
+        <a href="{% if current_project and current_project.slug %}{% url 'dashboardIndex' current_project.slug %}{% else %}{% url 'list_projects' %}{% endif %}" class="logo logo-dark">
           <span class="logo-sm">
             <h3 class="text-logo">reNgine-ng&nbsp;<small>{{ RENGINE_CURRENT_VERSION }}</small></h3>
           </span>
@@ -27,7 +27,7 @@
             <h3 class="text-logo">reNgine-ng&nbsp;<small>{{ RENGINE_CURRENT_VERSION }}</small></h3>
           </span>
         </a>
-        <a href="{% url 'dashboardIndex' current_project.slug %}" class="logo logo-light">
+        <a href="{% if current_project and current_project.slug %}{% url 'dashboardIndex' current_project.slug %}{% else %}{% url 'list_projects' %}{% endif %}" class="logo logo-light">
           <span class="logo-sm">
             <h3 class="text-sm-logo">reNgine-ng&nbsp;<small>{{ RENGINE_CURRENT_VERSION }}</small></h3>
           </span>
@@ -81,7 +81,7 @@
           <i class="mdi mdi-chevron-down d-xl-inline d-none"></i>
         </a>
         <div class="dropdown-menu">
-          {% if user|can:'modify_targets' %}
+          {% if user|can:'modify_targets' and current_project %}
           <a href="#" onclick="show_quick_add_target_modal()" class="dropdown-item">
             <i class="fe-crosshair me-1"></i>
             <span>Target</span>
@@ -204,7 +204,7 @@
         </a>
       </li>
       <li class="dropdown top-activity-counter">
-        <a class="nav-link dropdown-toggle waves-effect waves-light right-bar-toggle" href="javascript:getScanStatusSidebar('{% url 'api:scan_status' %}', '{% url 'api:stop_scan' %}', '{% url 'api:fetch_subscan_results' %}', project='{{current_project.slug}}', reload=false)">
+        <a class="nav-link dropdown-toggle waves-effect waves-light right-bar-toggle" href="javascript:getScanStatusSidebar('{% url 'api:scan_status' %}', '{% url 'api:stop_scan' %}', '{% url 'api:fetch_subscan_results' %}', project='{{current_project.slug|default:''}}', reload=false)">
           <i class="fe-activity noti-icon"></i>
           <span class="badge bg-danger noti-icon-badge"><span id="current_scan_counter">0</span></span>
         </a>
@@ -219,6 +219,7 @@
 <div class="collapse d-lg-none" id="mobileNavMenu">
   <div class="mobile-nav-menu">
   <!-- Current Project Badge -->
+  {% if current_project and current_project.slug %}
   <div class="nav-item">
     <div class="nav-link text-center" style="background-color: #e3f2fd; color: #3283f6; font-weight: 600;">
       <i class="fe-folder me-2"></i>{{current_project.name}}
@@ -230,11 +231,13 @@
       <i class="fe-home"></i> Dashboard
     </a>
   </div>
+  {% endif %}
   <div class="nav-item">
     <a class="nav-link" href="{% url 'list_projects' %}">
       <i class="fe-folder"></i> Projects
     </a>
   </div>
+  {% if current_project and current_project.slug %}
   <div class="nav-item">
     <a class="nav-link" href="{% url 'list_target' current_project.slug %}">
       <i class="fe-crosshair"></i> Targets
@@ -270,6 +273,7 @@
       <i class="fe-briefcase"></i> Organization
     </a>
   </div>
+  {% endif %}
   <!-- Scan Engine Submenu -->
   <div class="nav-item">
     <div class="nav-link mobile-submenu-header">
@@ -408,7 +412,7 @@
                   <input class="form-control" type="text" id="whois_domain_name" required="" placeholder="yourdomain.com">
               </div>
               <div class="mb-3 text-center">
-                  <button class="btn btn-primary float-end" type="submit" id="search_whois_toolbox_btn" data-url="{% url 'api:whois' %}" data-slug="{{current_project.slug}}" data-addTargetUrl="{% url 'api:addTarget' %}">Search Whois</button>
+                  <button class="btn btn-primary float-end" type="submit" id="search_whois_toolbox_btn" data-url="{% url 'api:whois' %}" data-slug="{{current_project.slug|default:''}}" data-addTargetUrl="{% url 'api:addTarget' %}">Search Whois</button>
               </div>
           </div>
       </div>
@@ -459,7 +463,7 @@
               <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
           </div>
           <div class="modal-body">
-              <p>If you would like to add IP/CIDRs, multiple domains, please <a href="{% url 'add_target' current_project.slug %}">click here.</a></p>
+              <p>If you would like to add IP/CIDRs, multiple domains, please {% if current_project %}<a href="{% url 'add_target' current_project.slug %}">click here.</a>{% else %}select a project first.{% endif %}</p>
               <div class="mb-3">
                   <label for="target_name_modal" class="form-label">Target Name</label>
                   <input class="form-control" type="text" id="target_name_modal" required="" placeholder="yourdomain.com">
@@ -478,7 +482,7 @@
               </div>
           </div>
           <div class="modal-footer">
-              <button class="btn btn-primary float-end" type="submit" id="add_target_modal" data-url="{% url 'api:addTarget' %}" data-slug="{{current_project.slug}}">Add Target</button>
+              <button class="btn btn-primary float-end" type="submit" id="add_target_modal" data-url="{% url 'api:addTarget' %}" data-slug="{{current_project.slug|default:''}}">Add Target</button>
               <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
           </div>
       </div>

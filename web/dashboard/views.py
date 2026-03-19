@@ -7,7 +7,7 @@ from django.contrib.auth import get_user_model, update_session_auth_hash
 from django.contrib.auth.forms import PasswordChangeForm
 from django.contrib.auth.signals import user_logged_in, user_logged_out
 from django.dispatch import receiver
-from django.http import HttpResponseBadRequest, HttpResponseRedirect, JsonResponse
+from django.http import Http404, HttpResponseBadRequest, HttpResponseRedirect, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.template.defaultfilters import slugify
 from django.urls import reverse
@@ -17,7 +17,7 @@ from rolepermissions.roles import assign_role, clear_roles
 
 from dashboard.forms import ProjectForm
 from dashboard.models import NetlasAPIKey, OpenAiAPIKey, Project, UserAPIKey
-from dashboard.utils import get_user_groups, get_user_projects
+from dashboard.utils import get_oauth_provider_display_name, get_user_groups, get_user_projects, is_oauth_user
 from reNgine.definitions import FOUR_OH_FOUR_URL, PERM_MODIFY_SYSTEM_CONFIGURATIONS
 from startScan.models import (
     CountryISO,
@@ -146,7 +146,7 @@ def profile(request):
 @has_permission_decorator(PERM_MODIFY_SYSTEM_CONFIGURATIONS, redirect_url=FOUR_OH_FOUR_URL)
 def admin_interface(request):
     User = get_user_model()  # noqa: N806
-    users = User.objects.all().order_by("date_joined")
+    users = User.objects.prefetch_related("socialaccount_set").all().order_by("date_joined")
     return render(request, "dashboard/admin.html", {"users": users})
 
 
@@ -206,15 +206,19 @@ def get_user_from_request(request):
 
 
 def handle_get_request(request, mode, user):
-    if mode == "change_status":
-        user.is_active = not user.is_active
-        user.save()
-        if user.is_active:
-            messages.add_message(request, messages.INFO, f"User {user.username} successfully activated.")
-        else:
-            messages.add_message(request, messages.INFO, f"User {user.username} successfully deactivated.")
+    if mode != "change_status":
+        return HttpResponseBadRequest(reverse("admin_interface"), status=400)
+
+    if user is None:
+        messages.add_message(request, messages.ERROR, "User not found.")
         return HttpResponseRedirect(reverse("admin_interface"))
-    return HttpResponseBadRequest(reverse("admin_interface"), status=400)
+    user.is_active = not user.is_active
+    user.save()
+    if user.is_active:
+        messages.add_message(request, messages.INFO, f"User {user.username} successfully activated.")
+    else:
+        messages.add_message(request, messages.INFO, f"User {user.username} successfully deactivated.")
+    return HttpResponseRedirect(reverse("admin_interface"))
 
 
 def handle_post_request(request, mode, user):
@@ -249,15 +253,19 @@ def handle_update_user(request, user):
         if change_password:
             user.set_password(change_password)
 
-        # Update projects
+        # Update projects - use safer pattern to avoid DoesNotExist errors
         user.projects.clear()  # Remove all existing projects
-        for project_id in projects:
-            project = Project.objects.get(id=project_id)
-            user.projects.add(project)
+        if projects:
+            # Fetch all valid projects at once
+            valid_projects = Project.objects.filter(id__in=projects)
+            # Verify all requested project IDs exist
+            if valid_projects.count() != len(projects):
+                return JsonResponse({"status": False, "error": "One or more project IDs are invalid"})
+            user.projects.set(valid_projects)
 
         user.save()
         return JsonResponse({"status": True})
-    except (ValueError, KeyError) as e:
+    except (ValueError, KeyError, TypeError) as e:
         logger.error("Error updating user: %s", e)
         return JsonResponse({"status": False, "error": "An error occurred while updating the user"})
 
@@ -294,7 +302,7 @@ def on_user_logged_out(sender, request, **kwargs):
 @receiver(user_logged_in)
 def on_user_logged_in(sender, request, **kwargs):
     user = kwargs.get("user")
-    messages.add_message(request, messages.INFO, "Hi @" + user.username + " welcome back!")
+    messages.add_message(request, messages.INFO, f"Hi @{user.username} welcome back!")
 
 
 def search(request):
@@ -306,7 +314,11 @@ def four_oh_four(request):
 
 
 def projects(request):
-    context = {"projects": get_user_projects(request.user)}
+    projects_qs = get_user_projects(request.user)
+    context = {
+        "projects": projects_qs,
+        "has_projects": projects_qs.exists(),
+    }
     return render(request, "dashboard/projects.html", context)
 
 
@@ -324,6 +336,10 @@ def delete_project(request, id):
 
 
 def onboarding(request):
+    # OAuth users should see the dedicated welcome page, not the onboarding form
+    if is_oauth_user(request.user):
+        return redirect("oauth_welcome")
+
     error = ""
     if request.method == "POST":
         project_name = request.POST.get("project_name")
@@ -337,7 +353,10 @@ def onboarding(request):
         insert_date = timezone.now()
 
         try:
-            Project.objects.create(name=project_name, slug=slug, insert_date=insert_date)
+            project = Project.objects.create(name=project_name, slug=slug, insert_date=insert_date)
+            # Add the creator to the project's users so they can access it
+            if request.user.is_authenticated:
+                project.users.add(request.user)
         except Exception as e:
             logger.error(f" Could not create project, Error: {e}")
             error = "Could not create project, check logs for more details"
@@ -352,29 +371,27 @@ def onboarding(request):
             error = "Could not create User, check logs for more details"
 
         if key_openai:
-            openai_api_key = OpenAiAPIKey.objects.first()
-            if openai_api_key:
+            if openai_api_key := OpenAiAPIKey.objects.first():
                 openai_api_key.key = key_openai
                 openai_api_key.save()
             else:
                 OpenAiAPIKey.objects.create(key=key_openai)
 
         if key_netlas:
-            netlas_api_key = NetlasAPIKey.objects.first()
-            if netlas_api_key:
+            if netlas_api_key := NetlasAPIKey.objects.first():
                 netlas_api_key.key = key_netlas
                 netlas_api_key.save()
             else:
                 NetlasAPIKey.objects.create(key=key_netlas)
 
-    context = {}
-    context["error"] = error
-
     # Get first available project
     project = get_user_projects(request.user).first()
 
-    context["openai_key"] = OpenAiAPIKey.objects.first()
-    context["netlas_key"] = NetlasAPIKey.objects.first()
+    context = {
+        "error": error,
+        "openai_key": OpenAiAPIKey.objects.first(),
+        "netlas_key": NetlasAPIKey.objects.first(),
+    }
 
     # then redirect to the dashboard
     if project:
@@ -388,6 +405,33 @@ def onboarding(request):
 def list_projects(request):
     projects = get_user_projects(request.user)
     return render(request, "dashboard/projects.html", {"projects": projects})
+
+
+def oauth_welcome(request):
+    """
+    Intermediate welcome page for OAuth users.
+    Shows a clear explanation of their account status, permissions,
+    and what an administrator needs to do to grant project access.
+    """
+    if not request.user.is_authenticated:
+        return redirect("login")
+
+    user = request.user
+
+    if not is_oauth_user(user):
+        return redirect("onboarding")
+
+    provider_name = get_oauth_provider_display_name(user)
+
+    # Check if user has any assigned projects without building an unused queryset
+    has_projects = Project.objects.filter(users=user).exists()
+
+    # If user has projects, they can proceed — but still show the welcome on first visit
+    context = {
+        "provider_name": provider_name,
+        "has_projects": has_projects,
+    }
+    return render(request, "dashboard/oauth_welcome.html", context)
 
 
 @has_permission_decorator(PERM_MODIFY_SYSTEM_CONFIGURATIONS, redirect_url=FOUR_OH_FOUR_URL)
@@ -450,8 +494,7 @@ def api_key_management(request):
     context = {"api_keys": user_api_keys, "page_title": "API Keys Management"}
 
     # Check if there's a newly created API key to show
-    new_api_key = request.session.pop("new_api_key", None)
-    if new_api_key:
+    if new_api_key := request.session.pop("new_api_key", None):
         context["new_api_key"] = new_api_key
 
     return render(request, "dashboard/api_keys.html", context)
@@ -465,8 +508,7 @@ def create_api_key(request):
     Returns the generated key only once for security.
     """
     if request.method == "POST":
-        name = request.POST.get("name", "").strip()
-        if name:
+        if name := request.POST.get("name", "").strip():
             # Check if user already has an API key with this name
             if UserAPIKey.objects.filter(user=request.user, name=name).exists():
                 messages.error(request, f'API Key with name "{name}" already exists. Please choose a different name.')
@@ -489,13 +531,10 @@ def delete_api_key(request, key_id):
         key_id (str): Primary key of the API key to delete
     """
     if request.method == "POST":
-        try:
-            api_key = get_object_or_404(UserAPIKey, pk=key_id, user=request.user)
-            key_name = api_key.name
-            api_key.delete()
-            messages.success(request, f'API Key "{key_name}" deleted successfully.')
-        except Exception:
-            messages.error(request, "API Key not found or you do not have permission to delete it.")
+        api_key = get_object_or_404(UserAPIKey, pk=key_id, user=request.user)
+        key_name = api_key.name
+        api_key.delete()
+        messages.success(request, f'API Key "{key_name}" deleted successfully.')
 
     return redirect("api_keys")
 
@@ -515,7 +554,7 @@ def toggle_api_key(request, key_id):
 
             status_text = "activated" if api_key.is_active else "deactivated"
             messages.success(request, f'API Key "{api_key.name}" {status_text} successfully.')
-        except Exception:
+        except Http404:
             messages.error(request, "API Key not found or you do not have permission to modify it.")
 
     return redirect("api_keys")
