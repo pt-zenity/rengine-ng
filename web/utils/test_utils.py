@@ -65,9 +65,8 @@ class TestDataGenerator:
     """
 
 
-    def __init__(self):
-        self.subscans = []
-        self.vulnerabilities = []
+    subscans = []
+    vulnerabilities = []
 
     # Disable logging for tests
     logging.disable(logging.CRITICAL)
@@ -139,10 +138,10 @@ class TestDataGenerator:
         )
         return self.project
 
-    def create_domain(self, name="example.com"):
+    def create_domain(self):
         """Create and return a test domain."""
         self.domain = Domain.objects.create(
-            name=name,
+            name="example.com",
             project=self.project,
             insert_date=timezone.now()
         )
