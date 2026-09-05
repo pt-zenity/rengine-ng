@@ -47,8 +47,8 @@ jobs:
         run: |
           set -euo pipefail
           install -m 700 -d ~/.ssh
-          printf '%s\n' "${SSH_PRIVATE_KEY}" > ~/.ssh/deploy_key
-          chmod 600 ~/.ssh/deploy_key
+          printf '%s\n' "${SSH_PRIVATE_KEY}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
           printf '%s\n' "${VPS_KNOWN_HOSTS}" > ~/.ssh/known_hosts
           chmod 600 ~/.ssh/known_hosts
 
@@ -61,7 +61,7 @@ jobs:
         run: |
           set -euo pipefail
           ssh \
-            -i ~/.ssh/deploy_key \
+            -i ~/.ssh/id_ed25519 \
             -o BatchMode=yes \
             -o StrictHostKeyChecking=yes \
             -p "${VPS_PORT}" \
@@ -71,4 +71,4 @@ jobs:
       - name: Remove SSH material
         if: always()
         run: |
-          rm -f ~/.ssh/deploy_key ~/.ssh/known_hosts
+          rm -f ~/.ssh/id_ed25519 ~/.ssh/known_hosts
