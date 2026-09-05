@@ -138,10 +138,10 @@ class TestDataGenerator:
         )
         return self.project
 
-    def create_domain(self):
+    def create_domain(self, name="example.com"):
         """Create and return a test domain."""
         self.domain = Domain.objects.create(
-            name="example.com",
+            name=name,
             project=self.project,
             insert_date=timezone.now()
         )

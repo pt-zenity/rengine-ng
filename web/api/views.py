@@ -15,6 +15,7 @@ from django.urls import reverse
 from django.core.cache import cache
 from django.db import transaction
 from dashboard.models import OllamaSettings, Project, SearchHistory, OpenAiAPIKey
+from dashboard.utils import get_user_projects
 from django.db.models import CharField, Count, F, Q, Value
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
@@ -137,9 +138,7 @@ logger = logging.getLogger(__name__)
 
 
 def _authorized_projects(user):
-    if user.is_superuser:
-        return Project.objects.all()
-    return Project.objects.filter(users=user)
+    return get_user_projects(user)
 
 
 def _can_delete(user):
@@ -149,17 +148,24 @@ def _can_delete(user):
 def _parse_delete_ids(values):
     if not isinstance(values, (list, tuple)) or not values:
         raise ValueError
+
     ids = []
     for value in values:
-        if isinstance(value, bool):
+        if value is None or isinstance(value, bool):
             raise ValueError
-        try:
-            value = int(value)
-        except (TypeError, ValueError):
+
+        if isinstance(value, int):
+            parsed = value
+        elif isinstance(value, str):
+            if not re.fullmatch(r"\d+", value):
+                raise ValueError
+            parsed = int(value)
+        else:
             raise ValueError
-        if value <= 0:
+
+        if parsed <= 0:
             raise ValueError
-        ids.append(value)
+        ids.append(parsed)
     return ids
 
 
