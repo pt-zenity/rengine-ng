@@ -25,19 +25,14 @@ class BaseTestCase(TestCase):
         # Create minimal auth setup (user and permissions)
         self.user = self.data_generator.create_minimal_auth_setup()
         
-        # Save original signal handlers used during login/logout tests
+        # Save original on_user_logged_in function
         self.original_on_user_logged_in = on_user_logged_in
-        self.original_on_user_logged_out = __import__('dashboard.views', fromlist=['on_user_logged_out']).on_user_logged_out
-
-        # Replace signal handlers with no-op mocks to avoid message middleware requirements
+        
+        # Replace on_user_logged_in with a mock function
         def mock_on_user_logged_in(sender, request, **kwargs):
             pass
-
-        def mock_on_user_logged_out(sender, request, **kwargs):
-            pass
-
+        
         on_user_logged_in.__code__ = mock_on_user_logged_in.__code__
-        __import__('dashboard.views', fromlist=['on_user_logged_out']).on_user_logged_out.__code__ = mock_on_user_logged_out.__code__
         
         # Login the user
         self.client.force_login(self.user)
@@ -61,6 +56,5 @@ class BaseTestCase(TestCase):
     
     def tearDown(self):
         """Clean up after tests."""
-        # Restore the original signal handlers after each test
+        # Restore original on_user_logged_in function
         on_user_logged_in.__code__ = self.original_on_user_logged_in.__code__
-        __import__('dashboard.views', fromlist=['on_user_logged_out']).on_user_logged_out.__code__ = self.original_on_user_logged_out.__code__
