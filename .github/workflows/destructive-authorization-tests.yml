@@ -1,4 +1,4 @@
-# Manual run trigger for PR #8
+# PR #8 test trigger after workflow installation
 name: Destructive authorization tests
 
 on:
