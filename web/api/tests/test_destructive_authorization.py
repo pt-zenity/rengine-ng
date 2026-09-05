@@ -3,10 +3,12 @@ from django.urls import reverse
 from django.utils import timezone
 from rolepermissions.roles import assign_role
 from rest_framework import status
+from rest_framework.test import APIClient
 
 from api.views import _parse_delete_ids
 from dashboard.models import Project
 from startScan.models import ScanHistory, SubScan, Subdomain, Vulnerability
+from targetApp.models import Domain
 from utils.test_base import BaseTestCase
 
 
@@ -23,7 +25,11 @@ class TestDestructiveAuthorization(BaseTestCase):
         assign_role(self.mutation_user, "penetration_tester")
 
         self.data_generator.project = self.project_a
-        self.data_generator.create_domain(name="example-authorized.com")
+        self.data_generator.domain = Domain.objects.create(
+            name="example-authorized.com",
+            project=self.project_a,
+            insert_date=timezone.now(),
+        )
         self.data_generator.create_scan_history()
         self.data_generator.create_subdomain("admin.example-authorized.com")
         self.data_generator.create_endpoint(name="authorized-endpoint")
@@ -34,7 +40,11 @@ class TestDestructiveAuthorization(BaseTestCase):
             name="Project B Delete", slug="project-b-delete", insert_date=timezone.now()
         )
         self.data_generator.project = self.project_b
-        self.data_generator.create_domain(name="example-b-delete.com")
+        self.data_generator.domain = Domain.objects.create(
+            name="example-b-delete.com",
+            project=self.project_b,
+            insert_date=timezone.now(),
+        )
         self.data_generator.create_scan_history()
         self.data_generator.create_subdomain("other.example-b-delete.com")
         self.data_generator.create_endpoint(name="other-endpoint")
@@ -122,6 +132,31 @@ class TestDestructiveAuthorization(BaseTestCase):
         for value in [1.9, "1.9", "1e2", "", None, True, 0, -1, " 1", "1 ", "+1", [1], {"id": 1}]:
             with self.assertRaises(ValueError):
                 _parse_delete_ids([value])
+
+    def test_float_id_is_rejected_by_endpoint_without_deletion(self):
+        self._login_as_mutation_user()
+        object_id = self.project_a_subscan.id
+
+        response = self.client.post(
+            reverse("api:delete_rows"),
+            {"type": "subscan", "rows": [float(object_id) + 0.9]},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertTrue(SubScan.objects.filter(id=object_id).exists())
+
+    def test_digit_string_id_is_accepted_by_endpoint(self):
+        self._login_as_mutation_user()
+        object_id = self.project_a_subscan.id
+
+        response = self.client.post(
+            reverse("api:delete_rows"),
+            {"type": "subscan", "rows": [str(object_id)]},
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertFalse(SubScan.objects.filter(id=object_id).exists())
 
     def test_duplicate_ids_are_deleted_once(self):
         self._login_as_mutation_user()
@@ -246,8 +281,8 @@ class TestDestructiveAuthorization(BaseTestCase):
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
         self.assertTrue(Subdomain.objects.filter(id=self.project_a_subdomain.id).exists())
 
-        self.client.logout()
-        response = self.client.post(
+        anonymous_client = APIClient()
+        response = anonymous_client.post(
             reverse("api:delete_subdomain"),
             {"subdomain_ids": [self.project_a_subdomain.id]},
         )
