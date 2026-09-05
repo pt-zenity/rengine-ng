@@ -3,6 +3,7 @@ name: Destructive authorization tests
 
 on:
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
     paths:
       - "web/api/views.py"
       - "web/api/tests/test_destructive_authorization.py"
