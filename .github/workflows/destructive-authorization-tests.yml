@@ -1,3 +1,4 @@
+# Manual run trigger for PR #8
 name: Destructive authorization tests
 
 on:
