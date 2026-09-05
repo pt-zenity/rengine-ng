@@ -1,0 +1,3 @@
+[submodule "web/src/spyse-python"]
+	path = web/src/spyse-python
+	url = https://github.com/zeropointsecurity/spyse-python.git
