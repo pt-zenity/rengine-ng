@@ -3,9 +3,12 @@ from django.urls import reverse
 from django.utils import timezone
 from rolepermissions.roles import assign_role
 from rest_framework import status
+from rest_framework.test import APIClient
 
+from api.views import _parse_delete_ids
 from dashboard.models import Project
 from startScan.models import ScanHistory, SubScan, Subdomain, Vulnerability
+from targetApp.models import Domain
 from utils.test_base import BaseTestCase
 
 
@@ -14,24 +17,48 @@ class TestDestructiveAuthorization(BaseTestCase):
         super().setUp()
         User = get_user_model()
         self.mutation_user = User.objects.create_user(username="mutation")
-        self.project_a = self.data_generator.project
+
+        self.project_a = Project.objects.create(
+            name="Project A Delete", slug="project-a-delete", insert_date=timezone.now()
+        )
         self.project_a.users.add(self.mutation_user)
         assign_role(self.mutation_user, "penetration_tester")
 
+        self.data_generator.project = self.project_a
+        self.data_generator.domain = Domain.objects.create(
+            name="example-authorized.com",
+            project=self.project_a,
+            insert_date=timezone.now(),
+        )
+        self.data_generator.create_scan_history()
+        self.data_generator.create_subdomain("admin.example-authorized.com")
+        self.data_generator.create_endpoint(name="authorized-endpoint")
+        self.data_generator.create_subscan()
+        self.data_generator.create_vulnerability()
+
         self.project_b = Project.objects.create(
-            name="Project B", slug="project-b", insert_date=timezone.now()
+            name="Project B Delete", slug="project-b-delete", insert_date=timezone.now()
         )
         self.data_generator.project = self.project_b
-        self.data_generator.create_domain()
+        self.data_generator.domain = Domain.objects.create(
+            name="example-b-delete.com",
+            project=self.project_b,
+            insert_date=timezone.now(),
+        )
         self.data_generator.create_scan_history()
-        self.data_generator.create_subdomain("other.example.com")
-        self.data_generator.create_endpoint()
+        self.data_generator.create_subdomain("other.example-b-delete.com")
+        self.data_generator.create_endpoint(name="other-endpoint")
         self.data_generator.create_subscan()
         self.data_generator.create_vulnerability()
 
         self.project_a_subdomain = Subdomain.objects.filter(
             target_domain__project=self.project_a
         ).first()
+        self.project_a_subdomain_2 = Subdomain.objects.create(
+            name="secondary.admin.example-authorized.com",
+            target_domain=self.project_a_subdomain.target_domain,
+            scan_history=self.project_a_subdomain.scan_history,
+        )
         self.project_a_vulnerability = Vulnerability.objects.filter(
             target_domain__project=self.project_a
         ).first()
@@ -41,7 +68,7 @@ class TestDestructiveAuthorization(BaseTestCase):
         self.project_a_subscan_2 = SubScan.objects.create(
             start_scan_date=timezone.now(),
             scan_history=ScanHistory.objects.filter(domain__project=self.project_a).first(),
-            subdomain=Subdomain.objects.filter(target_domain__project=self.project_a).first(),
+            subdomain=self.project_a_subdomain_2,
             status=1,
         )
         self.project_b_subdomain = Subdomain.objects.filter(
@@ -87,11 +114,131 @@ class TestDestructiveAuthorization(BaseTestCase):
         self.assertFalse(SubScan.objects.filter(id=self.project_a_subscan_2.id).exists())
 
         response = self.client.post(
+            reverse("api:delete_vulnerability"),
+            {"vulnerability_ids": [self.project_a_vulnerability.id]},
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertFalse(Vulnerability.objects.filter(id=self.project_a_vulnerability.id).exists())
+
+        response = self.client.post(
             reverse("api:delete_subdomain"),
             {"subdomain_ids": [self.project_a_subdomain.id]},
         )
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertFalse(Subdomain.objects.filter(id=self.project_a_subdomain.id).exists())
+
+    def test_parse_delete_ids_rejects_malformed_values(self):
+        self.assertEqual(_parse_delete_ids([1, "2", 3]), [1, 2, 3])
+        for value in [1.9, "1.9", "1e2", "", None, True, 0, -1, " 1", "1 ", "+1", [1], {"id": 1}]:
+            with self.assertRaises(ValueError):
+                _parse_delete_ids([value])
+
+    def test_float_id_is_rejected_by_endpoint_without_deletion(self):
+        self._login_as_mutation_user()
+        object_id = self.project_a_subscan.id
+
+        response = self.client.post(
+            reverse("api:delete_rows"),
+            {"type": "subscan", "rows": [float(object_id) + 0.9]},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertTrue(SubScan.objects.filter(id=object_id).exists())
+
+    def test_malformed_ids_are_rejected_by_endpoint_without_deletion(self):
+        self._login_as_mutation_user()
+        object_id = self.project_a_subscan.id
+        malformed_values = ["1.9", "1e2", "", None, True, 0, -1, " 1", "1 ", "+1", [1], {"id": 1}]
+
+        for value in malformed_values:
+            response = self.client.post(
+                reverse("api:delete_rows"),
+                {"type": "subscan", "rows": [value]},
+                format="json",
+            )
+            self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+            self.assertTrue(SubScan.objects.filter(id=object_id).exists())
+
+    def test_digit_string_id_is_accepted_by_endpoint(self):
+        self._login_as_mutation_user()
+        object_id = self.project_a_subscan.id
+
+        response = self.client.post(
+            reverse("api:delete_rows"),
+            {"type": "subscan", "rows": [str(object_id)]},
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertFalse(SubScan.objects.filter(id=object_id).exists())
+
+    def test_duplicate_ids_are_deleted_once(self):
+        self._login_as_mutation_user()
+
+        response = self.client.post(
+            reverse("api:delete_subdomain"),
+            {"subdomain_ids": [self.project_a_subdomain.id, self.project_a_subdomain.id]},
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertFalse(Subdomain.objects.filter(id=self.project_a_subdomain.id).exists())
+
+        response = self.client.post(
+            reverse("api:delete_rows"),
+            {"type": "subscan", "rows": [self.project_a_subscan_2.id, self.project_a_subscan_2.id]},
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertFalse(SubScan.objects.filter(id=self.project_a_subscan_2.id).exists())
+
+    def test_duplicate_ids_with_foreign_or_invalid_ids_fail_atomically(self):
+        self._login_as_mutation_user()
+
+        response = self.client.post(
+            reverse("api:delete_rows"),
+            {
+                "type": "subscan",
+                "rows": [self.project_a_subscan.id, self.project_a_subscan.id, self.project_b_subscan.id],
+            },
+        )
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+        self.assertTrue(SubScan.objects.filter(id=self.project_a_subscan.id).exists())
+        self.assertTrue(SubScan.objects.filter(id=self.project_b_subscan.id).exists())
+
+        response = self.client.post(
+            reverse("api:delete_subdomain"),
+            {"subdomain_ids": [self.project_a_subdomain.id, self.project_a_subdomain.id, self.project_b_subdomain.id]},
+        )
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+        self.assertTrue(Subdomain.objects.filter(id=self.project_a_subdomain.id).exists())
+        self.assertTrue(Subdomain.objects.filter(id=self.project_b_subdomain.id).exists())
+
+    def test_system_admin_role_has_all_project_access(self):
+        User = get_user_model()
+        sys_admin = User.objects.create_user(username="sysadmin")
+        assign_role(sys_admin, "sys_admin")
+        self.client.force_login(sys_admin)
+
+        response = self.client.post(
+            reverse("api:delete_subdomain"),
+            {"subdomain_ids": [self.project_a_subdomain.id]},
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertFalse(Subdomain.objects.filter(id=self.project_a_subdomain.id).exists())
+
+    def test_non_member_with_modify_targets_permission_is_blocked(self):
+        User = get_user_model()
+        ordinary_user = User.objects.create_user(username="ordinary")
+        assign_role(ordinary_user, "penetration_tester")
+        self.client.force_login(ordinary_user)
+
+        response = self.client.post(
+            reverse("api:delete_subdomain"),
+            {"subdomain_ids": [self.project_a_subdomain.id]},
+        )
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+        self.assertTrue(Subdomain.objects.filter(id=self.project_a_subdomain.id).exists())
+
+    def test_authorized_vulnerability_delete_occurs_before_subdomain_delete(self):
+        self._login_as_mutation_user()
 
         response = self.client.post(
             reverse("api:delete_vulnerability"),
@@ -99,6 +246,13 @@ class TestDestructiveAuthorization(BaseTestCase):
         )
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertFalse(Vulnerability.objects.filter(id=self.project_a_vulnerability.id).exists())
+
+        response = self.client.post(
+            reverse("api:delete_subdomain"),
+            {"subdomain_ids": [self.project_a_subdomain.id]},
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertFalse(Subdomain.objects.filter(id=self.project_a_subdomain.id).exists())
 
     def test_mixed_project_batch_is_atomic(self):
         self._login_as_mutation_user()
@@ -141,8 +295,8 @@ class TestDestructiveAuthorization(BaseTestCase):
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
         self.assertTrue(Subdomain.objects.filter(id=self.project_a_subdomain.id).exists())
 
-        self.client.logout()
-        response = self.client.post(
+        anonymous_client = APIClient()
+        response = anonymous_client.post(
             reverse("api:delete_subdomain"),
             {"subdomain_ids": [self.project_a_subdomain.id]},
         )
