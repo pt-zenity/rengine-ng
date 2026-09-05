@@ -157,7 +157,7 @@ def _parse_delete_ids(values):
         if isinstance(value, int):
             parsed = value
         elif isinstance(value, str):
-            if not re.fullmatch(r"\d+", value):
+            if not re.fullmatch(r"[0-9]+", value):
                 raise ValueError
             parsed = int(value)
         else:
