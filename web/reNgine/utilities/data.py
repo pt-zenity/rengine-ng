@@ -77,21 +77,19 @@ def safe_int_cast(value, default=None):
     """
     Convert a value to an integer if possible, otherwise return a default value.
 
-    Accepts only actual integers or digit-only strings without ambiguity.
-    Rejects floats, booleans, signed values, whitespace-padded values, nulls,
-    and other malformed inputs rather than truncating them silently.
+    Args:
+        value: The value or the array of values to convert to an integer.
+        default: The default value to return if conversion fails.
+
+    Returns:
+        int or default: The integer value if conversion is successful, otherwise the default value.
     """
     if isinstance(value, list):
-        return [safe_int_cast(item, default) for item in value]
-    if value is None or isinstance(value, bool):
-        return default
-    if isinstance(value, int):
-        return value
-    if isinstance(value, str):
-        if not re.fullmatch(r"\d+", value):
-            return default
+        return [safe_int_cast(item) for item in value]
+    try:
         return int(value)
-    return default
+    except (ValueError, TypeError):
+        return default
 
 
 def get_ip_info(ip_address):
