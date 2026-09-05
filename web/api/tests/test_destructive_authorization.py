@@ -146,6 +146,20 @@ class TestDestructiveAuthorization(BaseTestCase):
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertTrue(SubScan.objects.filter(id=object_id).exists())
 
+    def test_malformed_ids_are_rejected_by_endpoint_without_deletion(self):
+        self._login_as_mutation_user()
+        object_id = self.project_a_subscan.id
+        malformed_values = ["1.9", "1e2", "", None, True, 0, -1, " 1", "1 ", "+1", [1], {"id": 1}]
+
+        for value in malformed_values:
+            response = self.client.post(
+                reverse("api:delete_rows"),
+                {"type": "subscan", "rows": [value]},
+                format="json",
+            )
+            self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+            self.assertTrue(SubScan.objects.filter(id=object_id).exists())
+
     def test_digit_string_id_is_accepted_by_endpoint(self):
         self._login_as_mutation_user()
         object_id = self.project_a_subscan.id
