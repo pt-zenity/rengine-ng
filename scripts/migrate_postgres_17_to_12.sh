@@ -53,7 +53,7 @@ echo "Stopping application containers without deleting volumes"
 docker compose -f "${COMPOSE_FILE}" down --remove-orphans
 
 physical_backup="${BACKUP_DIR}/postgres17-${STAMP}.tar.gz"
-logical_backup="${BACKUP_DIR}/postgres17-${STAMP}.dump"
+logical_backup="${BACKUP_DIR}/postgres17-${STAMP}.sql"
 
 echo "Creating physical backup"
 docker run --rm \
@@ -77,8 +77,13 @@ docker exec "${PG17_CONTAINER}" pg_isready -U "${db_user}" -d "${db_name}" >/dev
 
 echo "Creating logical backup"
 docker exec "${PG17_CONTAINER}" \
-  pg_dump -U "${db_user}" -d "${db_name}" --format=custom > "${logical_backup}"
+  pg_dump -U "${db_user}" -d "${db_name}" \
+  --format=plain --no-owner --no-privileges > "${logical_backup}"
 [[ -s "${logical_backup}" ]] || { echo "Logical backup is empty"; exit 1; }
+grep -q '^-- PostgreSQL database dump' "${logical_backup}" || {
+  echo "Logical backup header validation failed"
+  exit 1
+}
 
 docker rm -f "${PG17_CONTAINER}" >/dev/null
 
@@ -99,7 +104,7 @@ docker exec "${PG12_CONTAINER}" pg_isready -U "${db_user}" -d "${db_name}" >/dev
 
 echo "Restoring logical backup into PostgreSQL 12"
 docker exec -i "${PG12_CONTAINER}" \
-  pg_restore -U "${db_user}" -d "${db_name}" --no-owner --clean --if-exists < "${logical_backup}"
+  psql -v ON_ERROR_STOP=1 -U "${db_user}" -d "${db_name}" < "${logical_backup}"
 
 table_count="$(docker exec "${PG12_CONTAINER}" \
   psql -U "${db_user}" -d "${db_name}" -Atqc \
