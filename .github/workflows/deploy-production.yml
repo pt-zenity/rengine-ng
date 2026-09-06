@@ -1,4 +1,4 @@
-# Deployment retry using id_ed25519
+# Production deployment over SSH
 name: Deploy production
 
 on:
@@ -22,8 +22,6 @@ jobs:
     environment: Ssh
 
     steps:
-      - uses: actions/checkout@v4
-
       - name: Validate deployment configuration
         env:
           VPS_HOST: ${{ vars.VPS_HOST }}
