@@ -78,6 +78,9 @@ jobs:
                command -v make
                git pull --ff-only
                make pull
+               if [[ ! -f docker/secrets/certs/rengine_rsa.key || ! -f docker/secrets/certs/rengine_chain.pem || ! -f docker/secrets/certs/rengine.pem ]]; then
+                 make certs
+               fi
                make up
                docker compose -f docker/docker-compose.yml ps
                test -z \"\$(docker compose -f docker/docker-compose.yml ps --status exited -q)\""; then
