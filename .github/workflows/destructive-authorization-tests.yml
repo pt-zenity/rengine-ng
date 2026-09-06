@@ -107,7 +107,9 @@ jobs:
             "${rengine_custom_engines}" \
             "${rengine_wordlists}" \
             "${rengine_tool_path}"
-          printf '%s\n' "ci-test" > "${rengine_home}/reNgine/version.txt"
+          printf '%s\n' "2.2.1" > "${rengine_home}/reNgine/version.txt"
+          mkdir -p "${HOME}/.config/nuclei"
+          printf '%s\n' "{}" > "${HOME}/.config/nuclei/config.yaml"
 
       - name: Run focused destructive authorization tests
         working-directory: docker/web
