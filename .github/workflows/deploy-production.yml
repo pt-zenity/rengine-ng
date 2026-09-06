@@ -131,8 +131,31 @@ jobs:
              RENGINE_VERSION=\$(cat web/reNgine/version.txt) docker compose -f docker/docker-compose.yml up -d --wait --wait-timeout 120 db redis
              RENGINE_VERSION=\$(cat web/reNgine/version.txt) docker compose -f docker/docker-compose.yml up -d --no-deps --force-recreate celery
              make up
+             if command -v ufw >/dev/null 2>&1; then
+               sudo -n ufw allow 443/tcp
+               sudo -n ufw allow 8082/tcp
+               sudo -n ufw status
+             fi
              docker compose -f docker/docker-compose.yml ps
              test -z \"\$(docker compose -f docker/docker-compose.yml ps --status exited -q)\""
+
+      - name: Verify public HTTPS access
+        env:
+          VPS_HOST: ${{ vars.VPS_HOST }}
+        run: |
+          set -euo pipefail
+          curl \
+            --fail \
+            --insecure \
+            --show-error \
+            --silent \
+            --retry 6 \
+            --retry-all-errors \
+            --retry-delay 10 \
+            --connect-timeout 15 \
+            --max-time 30 \
+            --output /dev/null \
+            "https://${VPS_HOST}/"
 
       - name: Remove SSH material
         if: always()
