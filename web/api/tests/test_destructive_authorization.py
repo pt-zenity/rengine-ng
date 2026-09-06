@@ -92,18 +92,18 @@ class TestDestructiveAuthorization(BaseTestCase):
         self.assertFalse(SubScan.objects.filter(id=self.project_a_subscan_2.id).exists())
 
         response = self.client.post(
-            reverse("api:delete_subdomain"),
-            {"subdomain_ids": [self.project_a_subdomain.id]},
-        )
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertFalse(Subdomain.objects.filter(id=self.project_a_subdomain.id).exists())
-
-        response = self.client.post(
             reverse("api:delete_vulnerability"),
             {"vulnerability_ids": [self.project_a_vulnerability.id]},
         )
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertFalse(Vulnerability.objects.filter(id=self.project_a_vulnerability.id).exists())
+
+        response = self.client.post(
+            reverse("api:delete_subdomain"),
+            {"subdomain_ids": [self.project_a_subdomain.id]},
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertFalse(Subdomain.objects.filter(id=self.project_a_subdomain.id).exists())
 
     def test_mixed_project_batch_is_atomic(self):
         self._login_as_mutation_user()
@@ -146,7 +146,7 @@ class TestDestructiveAuthorization(BaseTestCase):
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
         self.assertTrue(Subdomain.objects.filter(id=self.project_a_subdomain.id).exists())
 
-        self.client.logout()
+        self.client = self.client_class()
         response = self.client.post(
             reverse("api:delete_subdomain"),
             {"subdomain_ids": [self.project_a_subdomain.id]},
