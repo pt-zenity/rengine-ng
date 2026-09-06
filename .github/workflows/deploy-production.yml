@@ -51,12 +51,11 @@ jobs:
           printf '%s\n' "${VPS_KNOWN_HOSTS}" > ~/.ssh/known_hosts
           chmod 600 ~/.ssh/known_hosts
 
-      - name: Deploy and install
+      - name: Wait for SSH
         env:
           VPS_HOST: ${{ vars.VPS_HOST }}
           VPS_USER: ${{ vars.VPS_USER }}
           VPS_PORT: ${{ vars.VPS_PORT }}
-          DEPLOY_PATH: ${{ vars.DEPLOY_PATH }}
         run: |
           set -euo pipefail
           for attempt in 1 2 3; do
@@ -66,32 +65,48 @@ jobs:
               -o StrictHostKeyChecking=yes \
               -o ConnectTimeout=20 \
               -o ConnectionAttempts=2 \
-              -o ServerAliveInterval=30 \
-              -o ServerAliveCountMax=10 \
               -p "${VPS_PORT}" \
-              "${VPS_USER}@${VPS_HOST}" \
-              "set -euo pipefail
-               cd -- '${DEPLOY_PATH}'
-               test -f .env
-               command -v docker
-               docker compose version
-               command -v make
-               git pull --ff-only
-               make pull
-               if [[ ! -f docker/secrets/certs/rengine_rsa.key || ! -f docker/secrets/certs/rengine_chain.pem || ! -f docker/secrets/certs/rengine.pem ]]; then
-                 make certs
-               fi
-               make up
-               docker compose -f docker/docker-compose.yml ps
-               test -z \"\$(docker compose -f docker/docker-compose.yml ps --status exited -q)\""; then
+              "${VPS_USER}@${VPS_HOST}" true; then
               exit 0
             fi
             if [[ "${attempt}" -lt 3 ]]; then
-              echo "SSH deployment attempt ${attempt} failed; retrying in 10 seconds."
+              echo "SSH connection attempt ${attempt} failed; retrying in 10 seconds."
               sleep 10
             fi
           done
           exit 1
+
+      - name: Migrate database, deploy, and install
+        env:
+          VPS_HOST: ${{ vars.VPS_HOST }}
+          VPS_USER: ${{ vars.VPS_USER }}
+          VPS_PORT: ${{ vars.VPS_PORT }}
+          DEPLOY_PATH: ${{ vars.DEPLOY_PATH }}
+        run: |
+          set -euo pipefail
+          ssh \
+            -i ~/.ssh/id_ed25519 \
+            -o BatchMode=yes \
+            -o StrictHostKeyChecking=yes \
+            -o ServerAliveInterval=30 \
+            -o ServerAliveCountMax=10 \
+            -p "${VPS_PORT}" \
+            "${VPS_USER}@${VPS_HOST}" \
+            "set -euo pipefail
+             cd -- '${DEPLOY_PATH}'
+             test -f .env
+             command -v docker
+             docker compose version
+             command -v make
+             git pull --ff-only
+             bash scripts/migrate_postgres_17_to_12.sh
+             make pull
+             if [[ ! -f docker/secrets/certs/rengine_rsa.key || ! -f docker/secrets/certs/rengine_chain.pem || ! -f docker/secrets/certs/rengine.pem ]]; then
+               make certs
+             fi
+             make up
+             docker compose -f docker/docker-compose.yml ps
+             test -z \"\$(docker compose -f docker/docker-compose.yml ps --status exited -q)\""
 
       - name: Remove SSH material
         if: always()
