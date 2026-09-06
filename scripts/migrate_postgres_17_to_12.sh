@@ -2,6 +2,7 @@
 set -euo pipefail
 
 COMPOSE_FILE="docker/docker-compose.yml"
+export RENGINE_VERSION="$(cat web/reNgine/version.txt)"
 OLD_VOLUME="rengine_postgres_data"
 BACKUP_DIR="${HOME}/postgres-migration-backups"
 STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
@@ -84,6 +85,7 @@ grep -q '^-- PostgreSQL database dump' "${logical_backup}" || {
   echo "Logical backup header validation failed"
   exit 1
 }
+sed -i '/^\\restrict /d; /^\\unrestrict /d' "${logical_backup}"
 
 docker rm -f "${PG17_CONTAINER}" >/dev/null
 
