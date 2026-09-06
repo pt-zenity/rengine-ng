@@ -85,7 +85,11 @@ grep -q '^-- PostgreSQL database dump' "${logical_backup}" || {
   echo "Logical backup header validation failed"
   exit 1
 }
-sed -i '/^\\restrict /d; /^\\unrestrict /d' "${logical_backup}"
+sed -i \
+  -e '/^\\restrict /d' \
+  -e '/^\\unrestrict /d' \
+  -e '/^SET transaction_timeout = /d' \
+  "${logical_backup}"
 
 docker rm -f "${PG17_CONTAINER}" >/dev/null
 
