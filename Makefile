@@ -10,6 +10,10 @@ export HOST_GID=$(if $(SUDO_USER),$(shell id -g $(SUDO_USER)),$(shell id -g))
 RENGINE_VERSION := $(shell cat web/reNgine/version.txt)
 export RENGINE_VERSION
 
+# Allow production migrations to select a restored PostgreSQL volume.
+POSTGRES_VOLUME_NAME ?= rengine_postgres_data
+export POSTGRES_VOLUME_NAME
+
 # Define RENGINE_FOLDER
 RENGINE_FOLDER := /home/rengine/rengine
 export RENGINE_FOLDER
