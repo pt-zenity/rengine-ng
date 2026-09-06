@@ -28,16 +28,23 @@ jobs:
           VPS_USER: ${{ vars.VPS_USER }}
           VPS_PORT: ${{ vars.VPS_PORT }}
           DEPLOY_PATH: ${{ vars.DEPLOY_PATH }}
+          PRODUCTION_DOMAIN: ${{ vars.PRODUCTION_DOMAIN }}
           SSH_PRIVATE_KEY: ${{ secrets.VPS_SSH_PRIVATE_KEY }}
           VPS_KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
+          CLOUDFLARE_ORIGIN_CERT: ${{ secrets.CLOUDFLARE_ORIGIN_CERT }}
+          CLOUDFLARE_ORIGIN_KEY: ${{ secrets.CLOUDFLARE_ORIGIN_KEY }}
         run: |
           set -euo pipefail
           test -n "${VPS_HOST}"
           test -n "${VPS_USER}"
+          test -n "${PRODUCTION_DOMAIN}"
           test -n "${SSH_PRIVATE_KEY}"
           test -n "${VPS_KNOWN_HOSTS}"
+          test -n "${CLOUDFLARE_ORIGIN_CERT}"
+          test -n "${CLOUDFLARE_ORIGIN_KEY}"
           [[ "${VPS_PORT}" =~ ^[0-9]{1,5}$ ]]
           [[ "${DEPLOY_PATH}" =~ ^/[A-Za-z0-9._/-]+$ ]]
+          [[ "${PRODUCTION_DOMAIN}" =~ ^[A-Za-z0-9.-]+$ ]]
 
       - name: Configure SSH
         env:
@@ -50,6 +57,43 @@ jobs:
           chmod 600 ~/.ssh/id_ed25519
           printf '%s\n' "${VPS_KNOWN_HOSTS}" > ~/.ssh/known_hosts
           chmod 600 ~/.ssh/known_hosts
+
+      - name: Validate and stage origin certificate
+        env:
+          CLOUDFLARE_ORIGIN_CERT: ${{ secrets.CLOUDFLARE_ORIGIN_CERT }}
+          CLOUDFLARE_ORIGIN_KEY: ${{ secrets.CLOUDFLARE_ORIGIN_KEY }}
+          PRODUCTION_DOMAIN: ${{ vars.PRODUCTION_DOMAIN }}
+          VPS_HOST: ${{ vars.VPS_HOST }}
+          VPS_USER: ${{ vars.VPS_USER }}
+          VPS_PORT: ${{ vars.VPS_PORT }}
+        run: |
+          set -euo pipefail
+          umask 077
+          printf '%s\n' "${CLOUDFLARE_ORIGIN_CERT}" > /tmp/rengine-origin.pem
+          printf '%s\n' "${CLOUDFLARE_ORIGIN_KEY}" > /tmp/rengine-origin.key
+          openssl x509 -in /tmp/rengine-origin.pem -noout -checkend 86400
+          openssl x509 -in /tmp/rengine-origin.pem -noout -ext subjectAltName |
+            grep -Eq "DNS:(\\*\\.)?${PRODUCTION_DOMAIN//./\\.}"
+          cert_public_key="$(
+            openssl x509 -in /tmp/rengine-origin.pem -pubkey -noout |
+              openssl pkey -pubin -outform DER |
+              sha256sum |
+              cut -d' ' -f1
+          )"
+          private_public_key="$(
+            openssl pkey -in /tmp/rengine-origin.key -pubout -outform DER |
+              sha256sum |
+              cut -d' ' -f1
+          )"
+          test "${cert_public_key}" = "${private_public_key}"
+          scp \
+            -i ~/.ssh/id_ed25519 \
+            -o BatchMode=yes \
+            -o StrictHostKeyChecking=yes \
+            -P "${VPS_PORT}" \
+            /tmp/rengine-origin.pem \
+            /tmp/rengine-origin.key \
+            "${VPS_USER}@${VPS_HOST}:~/"
 
       - name: Wait for SSH
         env:
@@ -82,6 +126,7 @@ jobs:
           VPS_USER: ${{ vars.VPS_USER }}
           VPS_PORT: ${{ vars.VPS_PORT }}
           DEPLOY_PATH: ${{ vars.DEPLOY_PATH }}
+          PRODUCTION_DOMAIN: ${{ vars.PRODUCTION_DOMAIN }}
         run: |
           set -euo pipefail
           ssh \
@@ -103,6 +148,17 @@ jobs:
              trap diagnose ERR
              cd -- '${DEPLOY_PATH}'
              test -f .env
+             docker run --rm \
+               -v \"\${PWD}/docker/secrets/certs:/certs\" \
+               -v \"/home/${VPS_USER}/rengine-origin.pem:/source/rengine.pem:ro\" \
+               -v \"/home/${VPS_USER}/rengine-origin.key:/source/rengine_rsa.key:ro\" \
+               alpine:3.20 sh -c \
+               'cp /source/rengine.pem /certs/rengine.pem &&
+                cp /source/rengine_rsa.key /certs/rengine_rsa.key &&
+                chmod 644 /certs/rengine.pem &&
+                chmod 600 /certs/rengine_rsa.key'
+             sed -i \"s/^DOMAIN_NAME=.*/DOMAIN_NAME=${PRODUCTION_DOMAIN}/\" .env
+             rm -f \"/home/${VPS_USER}/rengine-origin.pem\" \"/home/${VPS_USER}/rengine-origin.key\"
              command -v docker
              docker compose version
              command -v make
@@ -132,6 +188,7 @@ jobs:
              RENGINE_VERSION=\$(cat web/reNgine/version.txt) docker compose -f docker/docker-compose.yml up -d --wait --wait-timeout 120 db redis
              RENGINE_VERSION=\$(cat web/reNgine/version.txt) docker compose -f docker/docker-compose.yml up -d --no-deps --force-recreate celery
              make up
+             RENGINE_VERSION=\$(cat web/reNgine/version.txt) docker compose -f docker/docker-compose.yml up -d --no-deps --force-recreate proxy
              if command -v ufw >/dev/null 2>&1; then
                if sudo -n ufw status >/dev/null 2>&1; then
                  sudo -n ufw allow 443/tcp
@@ -150,7 +207,7 @@ jobs:
 
       - name: Verify public HTTPS access
         env:
-          VPS_HOST: ${{ vars.VPS_HOST }}
+          PRODUCTION_DOMAIN: ${{ vars.PRODUCTION_DOMAIN }}
         run: |
           set -euo pipefail
           curl \
@@ -164,9 +221,13 @@ jobs:
             --connect-timeout 15 \
             --max-time 30 \
             --output /dev/null \
-            "https://${VPS_HOST}/"
+            "https://${PRODUCTION_DOMAIN}/"
 
       - name: Remove SSH material
         if: always()
         run: |
-          rm -f ~/.ssh/id_ed25519 ~/.ssh/known_hosts
+          rm -f \
+            ~/.ssh/id_ed25519 \
+            ~/.ssh/known_hosts \
+            /tmp/rengine-origin.pem \
+            /tmp/rengine-origin.key
