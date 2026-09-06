@@ -196,7 +196,7 @@ jobs:
              make up
              docker compose -f docker/docker-compose.yml exec -T web \
                poetry -C /home/rengine/rengine run python3 manage.py shell -c \
-               \"from django.contrib.auth import get_user_model; User = get_user_model(); u, _ = User.objects.get_or_create(username='${DJANGO_ADMIN_USERNAME}', defaults={'email': 'admin@${PRODUCTION_DOMAIN}'}); u.is_staff = True; u.is_superuser = True; u.set_password('${DJANGO_ADMIN_PASSWORD}'); u.save()\"
+               \"from django.contrib.auth import authenticate, get_user_model; User = get_user_model(); u, _ = User.objects.get_or_create(username='${DJANGO_ADMIN_USERNAME}', defaults={'email': 'admin@${PRODUCTION_DOMAIN}'}); u.is_active = True; u.is_staff = True; u.is_superuser = True; u.set_password('${DJANGO_ADMIN_PASSWORD}'); u.save(); assert u.check_password('${DJANGO_ADMIN_PASSWORD}'); assert authenticate(username='${DJANGO_ADMIN_USERNAME}', password='${DJANGO_ADMIN_PASSWORD}') is not None\"
              RENGINE_VERSION=\$(cat web/reNgine/version.txt) docker compose -f docker/docker-compose.yml up -d --no-deps --force-recreate proxy
              if command -v ufw >/dev/null 2>&1; then
                if sudo -n ufw status >/dev/null 2>&1; then
