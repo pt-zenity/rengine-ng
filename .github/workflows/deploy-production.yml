@@ -18,7 +18,7 @@ jobs:
   deploy:
     if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[deploy-production]')
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 60
     environment: Ssh
 
     steps:
@@ -51,7 +51,7 @@ jobs:
           printf '%s\n' "${VPS_KNOWN_HOSTS}" > ~/.ssh/known_hosts
           chmod 600 ~/.ssh/known_hosts
 
-      - name: Deploy
+      - name: Deploy and install
         env:
           VPS_HOST: ${{ vars.VPS_HOST }}
           VPS_USER: ${{ vars.VPS_USER }}
@@ -63,9 +63,21 @@ jobs:
             -i ~/.ssh/id_ed25519 \
             -o BatchMode=yes \
             -o StrictHostKeyChecking=yes \
+            -o ServerAliveInterval=30 \
+            -o ServerAliveCountMax=10 \
             -p "${VPS_PORT}" \
             "${VPS_USER}@${VPS_HOST}" \
-            "cd -- '${DEPLOY_PATH}' && git pull --ff-only"
+            "set -euo pipefail
+             cd -- '${DEPLOY_PATH}'
+             test -f .env
+             command -v docker
+             docker compose version
+             command -v make
+             git pull --ff-only
+             make pull
+             make up
+             docker compose -f docker/docker-compose.yml ps
+             test -z \"\$(docker compose -f docker/docker-compose.yml ps --status exited -q)\""
 
       - name: Remove SSH material
         if: always()
