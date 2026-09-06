@@ -30,8 +30,12 @@ db_user="$(env_value POSTGRES_USER)"
 
 current_volume="$(env_value POSTGRES_VOLUME_NAME)"
 if [[ "${current_volume}" == rengine_postgres_data_v12_* ]]; then
-  echo "PostgreSQL migration already completed: ${current_volume}"
-  exit 0
+  if current_version="$(docker run --rm -v "${current_volume}:/data:ro" alpine:3.20 cat /data/PG_VERSION 2>/dev/null)" &&
+     [[ "${current_version}" == "12" ]]; then
+    echo "PostgreSQL migration already completed: ${current_volume}"
+    exit 0
+  fi
+  echo "Configured migration volume ${current_volume} is missing or invalid; rebuilding it from ${OLD_VOLUME}"
 fi
 
 docker volume inspect "${OLD_VOLUME}" >/dev/null
