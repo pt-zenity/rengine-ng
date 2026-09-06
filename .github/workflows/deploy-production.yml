@@ -29,19 +29,23 @@ jobs:
           VPS_PORT: ${{ vars.VPS_PORT }}
           DEPLOY_PATH: ${{ vars.DEPLOY_PATH }}
           PRODUCTION_DOMAIN: ${{ vars.PRODUCTION_DOMAIN }}
+          DJANGO_ADMIN_USERNAME: ${{ vars.DJANGO_ADMIN_USERNAME }}
           SSH_PRIVATE_KEY: ${{ secrets.VPS_SSH_PRIVATE_KEY }}
           VPS_KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
           CLOUDFLARE_ORIGIN_CERT: ${{ secrets.CLOUDFLARE_ORIGIN_CERT }}
           CLOUDFLARE_ORIGIN_KEY: ${{ secrets.CLOUDFLARE_ORIGIN_KEY }}
+          DJANGO_ADMIN_PASSWORD: ${{ secrets.DJANGO_ADMIN_PASSWORD }}
         run: |
           set -euo pipefail
           test -n "${VPS_HOST}"
           test -n "${VPS_USER}"
           test -n "${PRODUCTION_DOMAIN}"
+          test -n "${DJANGO_ADMIN_USERNAME}"
           test -n "${SSH_PRIVATE_KEY}"
           test -n "${VPS_KNOWN_HOSTS}"
           test -n "${CLOUDFLARE_ORIGIN_CERT}"
           test -n "${CLOUDFLARE_ORIGIN_KEY}"
+          test -n "${DJANGO_ADMIN_PASSWORD}"
           [[ "${VPS_PORT}" =~ ^[0-9]{1,5}$ ]]
           [[ "${DEPLOY_PATH}" =~ ^/[A-Za-z0-9._/-]+$ ]]
           [[ "${PRODUCTION_DOMAIN}" =~ ^[A-Za-z0-9.-]+$ ]]
@@ -127,6 +131,8 @@ jobs:
           VPS_PORT: ${{ vars.VPS_PORT }}
           DEPLOY_PATH: ${{ vars.DEPLOY_PATH }}
           PRODUCTION_DOMAIN: ${{ vars.PRODUCTION_DOMAIN }}
+          DJANGO_ADMIN_USERNAME: ${{ vars.DJANGO_ADMIN_USERNAME }}
+          DJANGO_ADMIN_PASSWORD: ${{ secrets.DJANGO_ADMIN_PASSWORD }}
         run: |
           set -euo pipefail
           ssh \
@@ -188,6 +194,10 @@ jobs:
              RENGINE_VERSION=\$(cat web/reNgine/version.txt) docker compose -f docker/docker-compose.yml up -d --wait --wait-timeout 120 db redis
              RENGINE_VERSION=\$(cat web/reNgine/version.txt) docker compose -f docker/docker-compose.yml up -d --no-deps --force-recreate celery
              make up
+             make superuser_changepassword \
+               isNonInteractive=true \
+               DJANGO_SUPERUSER_USERNAME='${DJANGO_ADMIN_USERNAME}' \
+               DJANGO_SUPERUSER_PASSWORD='${DJANGO_ADMIN_PASSWORD}'
              RENGINE_VERSION=\$(cat web/reNgine/version.txt) docker compose -f docker/docker-compose.yml up -d --no-deps --force-recreate proxy
              if command -v ufw >/dev/null 2>&1; then
                if sudo -n ufw status >/dev/null 2>&1; then
