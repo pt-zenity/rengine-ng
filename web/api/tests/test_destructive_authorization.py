@@ -6,6 +6,7 @@ from rest_framework import status
 
 from dashboard.models import Project
 from startScan.models import ScanHistory, SubScan, Subdomain, Vulnerability
+from targetApp.models import Domain
 from utils.test_base import BaseTestCase
 
 
@@ -22,7 +23,11 @@ class TestDestructiveAuthorization(BaseTestCase):
             name="Project B", slug="project-b", insert_date=timezone.now()
         )
         self.data_generator.project = self.project_b
-        self.data_generator.create_domain()
+        self.data_generator.domain = Domain.objects.create(
+            name="other.example.com",
+            project=self.project_b,
+            insert_date=timezone.now(),
+        )
         self.data_generator.create_scan_history()
         self.data_generator.create_subdomain("other.example.com")
         self.data_generator.create_endpoint()
